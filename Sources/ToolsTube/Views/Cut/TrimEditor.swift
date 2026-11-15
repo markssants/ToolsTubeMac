@@ -72,6 +72,7 @@ struct RangeBar: View {
     let duration: Double
     let current: Double
     var onSeek: (Double) -> Void
+    @Environment(\.pageColors) private var colors
 
     private var start: Double { range.startSeconds ?? 0 }
     private var end: Double { range.endSeconds ?? duration }
@@ -81,19 +82,22 @@ struct RangeBar: View {
             let w = geo.size.width
             let x = { (t: Double) -> CGFloat in CGFloat(min(max(t / duration, 0), 1)) * w }
             ZStack(alignment: .leading) {
-                Capsule().fill(.quaternary).frame(height: 8)
-                Rectangle()
-                    .fill(Color.accentColor.opacity(0.35))
-                    .frame(width: max(x(end) - x(start), 0), height: 8)
+                Capsule().fill(.primary.opacity(0.08)).frame(height: 10)
+                Capsule()
+                    .fill(LinearGradient(colors: [colors[0], colors[1]], startPoint: .leading, endPoint: .trailing))
+                    .frame(width: max(x(end) - x(start), 0), height: 10)
+                    .shadow(color: colors[0].opacity(0.5), radius: 5)
                     .offset(x: x(start))
-                Rectangle().fill(.primary).frame(width: 2, height: 22).offset(x: x(current) - 1)
-                handle(color: .green).offset(x: x(start) - 6)
+                Capsule().fill(.white).frame(width: 3, height: 26)
+                    .shadow(color: .black.opacity(0.3), radius: 2)
+                    .offset(x: x(current) - 1.5)
+                handle(color: colors[0]).offset(x: x(start) - 6)
                     .gesture(DragGesture(coordinateSpace: .named("bar")).onChanged { g in
                         let t = min(max(Double(g.location.x / w) * duration, 0), end - 0.1)
                         range.start = TimeUtils.format(t, showMillis: true)
                         onSeek(t)
                     })
-                handle(color: .red).offset(x: x(end) - 6)
+                handle(color: colors[1]).offset(x: x(end) - 6)
                     .gesture(DragGesture(coordinateSpace: .named("bar")).onChanged { g in
                         let t = max(min(Double(g.location.x / w) * duration, duration), start + 0.1)
                         range.end = TimeUtils.format(t, showMillis: true)
@@ -109,9 +113,10 @@ struct RangeBar: View {
     }
 
     private func handle(color: Color) -> some View {
-        RoundedRectangle(cornerRadius: 3)
-            .fill(color.gradient)
-            .frame(width: 12, height: 26)
+        RoundedRectangle(cornerRadius: 5, style: .continuous)
+            .fill(.white)
+            .overlay(RoundedRectangle(cornerRadius: 5).stroke(color, lineWidth: 2.5))
+            .frame(width: 12, height: 28)
             .shadow(radius: 1, y: 1)
             .contentShape(Rectangle().inset(by: -6))
             .onHover { inside in
@@ -136,7 +141,9 @@ struct TrimEditor: View {
             if holder.playable {
                 PlayerSurface(player: holder.player)
                     .frame(minHeight: hasVideo ? 280 : 60, maxHeight: hasVideo ? 420 : 60)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(.white.opacity(0.2), lineWidth: 1))
+                    .shadow(color: .black.opacity(0.25), radius: 12, y: 6)
             } else {
                 Label("Pré-visualização indisponível para este formato. Digite os tempos manualmente.",
                       systemImage: "eye.slash")
@@ -151,7 +158,9 @@ struct TrimEditor: View {
                     Text("00:00").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                     Spacer()
                     Text(TimeUtils.format(holder.current, showMillis: true))
-                        .font(.callout.monospacedDigit().weight(.medium))
+                        .font(.system(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
+                        .padding(.horizontal, 10).padding(.vertical, 3)
+                        .background(Capsule().fill(.primary.opacity(0.07)))
                     Spacer()
                     Text(TimeUtils.format(d)).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                 }
@@ -162,13 +171,16 @@ struct TrimEditor: View {
                     Button {
                         range.start = TimeUtils.format(holder.current, showMillis: true)
                     } label: { Label("Marcar início", systemImage: "arrow.right.to.line") }
+                    .buttonStyle(LiquidButtonStyle(kind: .secondary, compact: true))
                     Button {
                         range.end = TimeUtils.format(holder.current, showMillis: true)
                     } label: { Label("Marcar fim", systemImage: "arrow.left.to.line") }
+                    .buttonStyle(LiquidButtonStyle(kind: .secondary, compact: true))
                     Spacer()
                     Button {
                         holder.previewRange(range.startSeconds ?? 0, range.endSeconds)
-                    } label: { Label("Ouvir/ver trecho", systemImage: "play.circle") }
+                    } label: { Label("Ver trecho", systemImage: "play.fill") }
+                    .buttonStyle(LiquidButtonStyle(kind: .primary, compact: true))
                     .disabled(!range.isActive)
                 }
             }

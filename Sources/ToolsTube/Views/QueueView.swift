@@ -1,10 +1,10 @@
 import SwiftUI
 
-/// Tela genérica de fila (downloads, conversões ou cortes).
 struct QueueView: View {
     let page: Page
     @ObservedObject var queue: JobQueue
     @EnvironmentObject var app: AppState
+    @Environment(\.pageColors) private var colors
 
     private var verb: String {
         switch page {
@@ -16,63 +16,74 @@ struct QueueView: View {
 
     private var emptyHint: String {
         switch page {
-        case .dlQueue: return "Em Vídeo Único, Vários Vídeos ou Playlist, use “Enviar para a fila” em vez de baixar na hora."
-        case .cvQueue: return "Em Converter Único ou Converter Vários, use “Enviar para a fila”."
-        default: return "Em Cortar Único ou Cortar Vários, use “Enviar para a fila”."
+        case .dlQueue: return "Em Vídeo Único, Vários Vídeos ou Playlist, toque em “Enviar à fila” em vez de baixar na hora."
+        case .cvQueue: return "Em Converter Único ou Converter Vários, toque em “Enviar à fila”."
+        default: return "Em Cortar Único ou Cortar Vários, toque em “Enviar à fila”."
         }
     }
 
     var body: some View {
-        PageScaffold(page: page, subtitle: "Monte uma lista e execute tudo de uma vez") {
+        PageView(page: page, subtitle: "Monte uma lista e execute tudo de uma vez") {
             if queue.jobs.isEmpty {
-                Section {
-                    VStack(spacing: 12) {
-                        Image(systemName: "tray")
-                            .font(.system(size: 40, weight: .light))
-                            .foregroundStyle(.tertiary)
-                        Text("A fila está vazia").font(.headline)
+                GlassCard {
+                    VStack(spacing: 14) {
+                        IconOrb(icon: "tray.fill", colors: colors, size: 64)
+                        Text("A fila está vazia").font(.system(size: 18, weight: .semibold, design: .rounded))
                         Text(emptyHint)
-                            .font(.callout).foregroundStyle(.secondary)
+                            .font(.system(size: 13)).foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: 380)
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 40)
+                    .padding(.vertical, 36)
                 }
             } else {
-                Section {
-                    HStack(spacing: 18) {
-                        stat("\(queue.jobs.count)", "itens")
-                        stat("\(queue.pendingCount)", "aguardando")
-                        stat("\(queue.activeCount)", "em andamento")
-                        stat("\(queue.doneCount)", "concluídos")
-                        Spacer()
-                        if queue.isRunning {
-                            ProgressView(value: queue.overallProgress)
-                                .progressViewStyle(.circular)
-                                .controlSize(.small)
+                HStack(spacing: 12) {
+                    stat("\(queue.jobs.count)", "itens", "square.stack.fill")
+                    stat("\(queue.pendingCount)", "aguardando", "clock.fill")
+                    stat("\(queue.activeCount)", "em andamento", "bolt.fill")
+                    stat("\(queue.doneCount)", "concluídos", "checkmark.circle.fill")
+                }
+                if queue.isRunning {
+                    GlassCard {
+                        HStack(spacing: 12) {
+                            Text("Progresso geral").font(.system(size: 13, weight: .semibold))
+                            GlassProgressBar(value: queue.overallProgress)
+                            Text("\(Int(queue.overallProgress * 100))%")
+                                .font(.system(size: 13, weight: .bold, design: .rounded).monospacedDigit())
+                                .foregroundStyle(colors[0])
                         }
                     }
                 }
-                Section {
-                    ForEach(queue.jobs) { job in
-                        JobRow(job: job) { withAnimation { queue.remove(job) } }
-                    }
-                    .onMove { queue.move(from: $0, to: $1) }
-                } header: {
-                    HStack {
-                        Text("Itens")
-                        Spacer()
+                GlassCard("Itens", icon: "list.bullet", accessory: {
+                    HStack(spacing: 8) {
                         if queue.hasFinished {
                             Button("Limpar concluídos") { withAnimation { queue.clearFinished() } }
-                                .buttonStyle(.link).font(.caption)
+                                .buttonStyle(LiquidButtonStyle(kind: .secondary, compact: true))
                         }
                         Button("Limpar tudo") { withAnimation { queue.removeAll() } }
-                            .buttonStyle(.link).font(.caption)
+                            .buttonStyle(LiquidButtonStyle(kind: .destructive, compact: true))
                     }
-                } footer: {
-                    Text("Arraste para reordenar. Clique com o botão direito em um item para mais opções.")
-                        .font(.caption).foregroundStyle(.secondary)
+                }) {
+                    VStack(spacing: 8) {
+                        ForEach(Array(queue.jobs.enumerated()), id: \.element.id) { i, job in
+                            HStack(spacing: 6) {
+                                JobRow(job: job) { withAnimation { queue.remove(job) } }
+                                if job.status == .pending {
+                                    VStack(spacing: 2) {
+                                        IconButton(icon: "chevron.up", help: "Subir") {
+                                            withAnimation { queue.move(from: IndexSet(integer: i), to: max(0, i - 1)) }
+                                        }
+                                        .disabled(i == 0)
+                                        IconButton(icon: "chevron.down", help: "Descer") {
+                                            withAnimation { queue.move(from: IndexSet(integer: i), to: min(queue.jobs.count, i + 2)) }
+                                        }
+                                        .disabled(i == queue.jobs.count - 1)
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 .onChange(of: queue.pendingCount) { old, new in
                     if new > old && queue.isRunning { queue.start() }
@@ -80,23 +91,28 @@ struct QueueView: View {
             }
         } actions: {
             OpenFolderButton { queue.jobs.last?.outputDir }
-            Spacer()
             if queue.isRunning {
-                Button(role: .destructive) { queue.cancelAll() } label: {
-                    Label("Parar tudo", systemImage: "stop.fill")
-                }
+                Button { queue.cancelAll() } label: { Label("Parar tudo", systemImage: "stop.fill") }
+                    .buttonStyle(LiquidButtonStyle(kind: .destructive))
             } else if queue.jobs.contains(where: { if case .failed = $0.status { return true }; return $0.status == .cancelled }) {
                 Button { queue.retryFailed() } label: { Label("Repetir falhas", systemImage: "arrow.clockwise") }
+                    .buttonStyle(LiquidButtonStyle(kind: .secondary))
             }
             PrimaryButton(title: "\(verb) tudo", icon: "play.fill") { queue.start() }
                 .disabled(queue.pendingCount == 0 || queue.isRunning)
         }
     }
 
-    private func stat(_ value: String, _ label: String) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(value).font(.title3.weight(.semibold)).monospacedDigit()
-            Text(label).font(.caption).foregroundStyle(.secondary)
+    private func stat(_ value: String, _ label: String, _ icon: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Image(systemName: icon).font(.system(size: 12, weight: .semibold)).foregroundStyle(colors[0])
+            Text(value).font(.system(size: 26, weight: .bold, design: .rounded).monospacedDigit())
+                .contentTransition(.numericText())
+            Text(label).font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
         }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassCard(radius: 20)
+        .animation(.spring, value: value)
     }
 }

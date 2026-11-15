@@ -22,7 +22,7 @@ struct ToolsTubeApp: App {
                 .frame(minWidth: 860, minHeight: 600)
         }
         .defaultSize(width: 1080, height: 760)
-        .windowToolbarStyle(.unified)
+        .windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(replacing: .newItem) { }
             CommandMenu("Ir") {

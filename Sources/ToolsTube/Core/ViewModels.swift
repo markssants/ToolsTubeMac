@@ -61,9 +61,9 @@ enum Page: String, Hashable, Identifiable {
 
     var color: Color {
         switch self {
-        case .dlSingle, .dlMulti, .dlPlaylist, .dlQueue: return .red
-        case .cvSingle, .cvMulti, .cvQueue: return .blue
-        case .ctSingle, .ctMulti, .ctQueue: return .orange
+        case .dlSingle, .dlMulti, .dlPlaylist, .dlQueue: return .blue
+        case .cvSingle, .cvMulti, .cvQueue: return .orange
+        case .ctSingle, .ctMulti, .ctQueue: return .green
         }
     }
 }

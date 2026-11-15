@@ -5,27 +5,25 @@ struct PlaylistView: View {
     @ObservedObject var model: PlaylistModel
 
     var body: some View {
-        PageScaffold(page: .dlPlaylist, subtitle: "Baixe playlists inteiras ou só os vídeos que escolher") {
-            Section {
-                Picker("Modo", selection: $model.mode.animation()) {
-                    ForEach(PlaylistModel.Mode.allCases) { m in Text(m.label).tag(m) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-            }
+        PageView(page: .dlPlaylist, subtitle: "Baixe playlists inteiras ou só os vídeos que escolher") {
+            GlassSegmented(selection: $model.mode.animation(.spring(response: 0.4)), options: PlaylistModel.Mode.allCases,
+                           label: { $0.label }, icon: { $0 == .single ? "music.note.list" : "square.stack.fill" })
+                .padding(4)
+                .glass(Capsule())
 
             if model.mode == .single { singleContent } else { multipleContent }
 
-            MediaOptionsSection(options: $model.options)
-            NamingSection(naming: $model.naming)
-            Section {
-                Toggle("Criar uma subpasta com o nome da playlist", isOn: $model.subfolder)
+            MediaOptionsCard(options: $model.options)
+            NamingCard(naming: $model.naming)
+            GlassCard {
+                OptionRow(title: "Criar subpasta com o nome da playlist", subtitle: "Organiza cada playlist em sua própria pasta") {
+                    Toggle("", isOn: $model.subfolder).toggleStyle(.switch).labelsHidden()
+                }
             }
-            SaveLocationSection(location: $model.save)
-            ActivitySection(queue: model.runner, title: "Downloads")
+            SaveLocationCard(location: $model.save)
+            ActivityCard(queue: model.runner, title: "Downloads")
         } actions: {
             OpenFolderButton { model.save.resolve() }
-            Spacer()
             AddToQueueButton(count: model.totalSelected) {
                 guard let jobs = model.makeJobs() else { return }
                 app.downloadQueue.add(jobs)
@@ -34,64 +32,56 @@ struct PlaylistView: View {
             .disabled(model.totalSelected == 0)
             PrimaryButton(title: model.totalSelected > 1 ? "Baixar \(model.totalSelected)" : "Baixar", icon: "arrow.down.circle.fill") {
                 guard let jobs = model.makeJobs() else { return }
-                model.runner.run(jobs)
+                withAnimation { model.runner.run(jobs) }
             }
             .disabled(model.totalSelected == 0)
         }
     }
 
-    // MARK: Uma playlist
-
     @ViewBuilder private var singleContent: some View {
-        Section("Link da playlist") {
-            HStack {
+        GlassCard("Link da playlist", icon: "link") {
+            HStack(spacing: 10) {
                 LinkField(placeholder: "https://www.youtube.com/playlist?list=…", text: $model.singleURL) {
                     Task { await model.loadSingle() }
                 }
                 Button("Carregar") { Task { await model.loadSingle() } }
+                    .buttonStyle(LiquidButtonStyle(kind: .primary, compact: true))
                     .disabled(!model.singleURL.hasPrefix("http") || model.loadingSingle)
             }
             if model.loadingSingle {
                 HStack(spacing: 10) {
                     ProgressView().controlSize(.small)
-                    Text("Carregando playlist…").foregroundStyle(.secondary)
+                    Text("Carregando playlist…").font(.system(size: 12)).foregroundStyle(.secondary)
                 }
             } else if let err = model.errorSingle {
-                Label(err, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange).font(.callout)
+                Label(err, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange).font(.system(size: 12))
             }
         }
-
         if let binding = Binding($model.single) {
-            PlaylistEntriesSection(playlist: binding)
+            PlaylistEntriesCard(playlist: binding)
         }
     }
 
-    // MARK: Várias playlists
-
     @ViewBuilder private var multipleContent: some View {
-        Section("Links das playlists") {
+        GlassCard("Links das playlists", icon: "link") {
             LinksEditor(text: $model.multiText, placeholder: "Cole o link de uma playlist por linha…")
             HStack {
-                Button {
-                    if let s = NSPasteboard.general.string(forType: .string) {
-                        model.multiText += (model.multiText.isEmpty ? "" : "\n") + s
-                    }
-                } label: { Label("Colar", systemImage: "doc.on.clipboard") }
+                PasteButton2 { s in model.multiText += (model.multiText.isEmpty ? "" : "\n") + s }
                 Spacer()
-                Button { model.addPlaylists() } label: { Label("Carregar playlists", systemImage: "plus") }
+                Button { withAnimation { model.addPlaylists() } } label: { Label("Carregar playlists", systemImage: "plus") }
+                    .buttonStyle(LiquidButtonStyle(kind: .primary, compact: true))
                     .disabled(extractURLs(model.multiText).isEmpty)
             }
         }
-
         ForEach($model.playlists) { $pl in
-            PlaylistEntriesSection(playlist: $pl, collapsible: true) {
-                model.playlists.removeAll { $0.id == pl.id }
+            PlaylistEntriesCard(playlist: $pl, collapsible: true) {
+                withAnimation { model.playlists.removeAll { $0.id == pl.id } }
             }
         }
     }
 }
 
-struct PlaylistEntriesSection: View {
+struct PlaylistEntriesCard: View {
     @Binding var playlist: PlaylistInfo
     var collapsible = false
     var onRemove: (() -> Void)?
@@ -99,48 +89,51 @@ struct PlaylistEntriesSection: View {
     private var allSelected: Bool { !playlist.entries.isEmpty && playlist.entries.allSatisfy(\.selected) }
 
     var body: some View {
-        Section {
-            switch playlist.state {
-            case .loading:
-                HStack(spacing: 10) {
-                    ProgressView().controlSize(.small)
-                    Text("Carregando \(playlist.url)…").foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
-                }
-            case .failed(let msg):
-                Label(msg, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange).font(.callout)
-            case .ready:
-                if !collapsible || playlist.expanded {
-                    ForEach($playlist.entries) { $e in
-                        VideoEntryRow(entry: $e, showIndex: true)
-                    }
-                }
-            }
-        } header: {
-            HStack(spacing: 8) {
+        GlassCard {
+            HStack(spacing: 10) {
                 if collapsible {
                     Button {
-                        withAnimation { playlist.expanded.toggle() }
+                        withAnimation(.spring(response: 0.35)) { playlist.expanded.toggle() }
                     } label: {
-                        Image(systemName: "chevron.right")
+                        Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold))
                             .rotationEffect(.degrees(playlist.expanded ? 90 : 0))
+                            .frame(width: 22, height: 22)
                     }
                     .buttonStyle(.plain)
                 }
-                Image(systemName: "music.note.list")
-                Text(playlist.title).lineLimit(1)
-                if let u = playlist.uploader { Text("· \(u)").foregroundStyle(.tertiary).lineLimit(1) }
+                Thumbnail(url: playlist.entries.first?.thumbnail, width: 64)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(playlist.title).font(.system(size: 14, weight: .semibold)).lineLimit(1)
+                    Text([playlist.uploader, playlist.state == .ready ? "\(playlist.entries.count) vídeos" : nil]
+                        .compactMap { $0 }.joined(separator: " · "))
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                }
                 Spacer()
                 if playlist.state == .ready {
-                    Text("\(playlist.selectedCount)/\(playlist.entries.count)").monospacedDigit()
+                    Text("\(playlist.selectedCount)/\(playlist.entries.count)")
+                        .font(.system(size: 12, weight: .semibold).monospacedDigit()).foregroundStyle(.secondary)
                     Button(allSelected ? "Desmarcar todos" : "Marcar todos") {
                         let t = !allSelected
                         for i in playlist.entries.indices { playlist.entries[i].selected = t }
                     }
-                    .buttonStyle(.link).font(.caption)
+                    .buttonStyle(LiquidButtonStyle(kind: .secondary, compact: true))
                 }
-                if let onRemove {
-                    Button(action: onRemove) { Image(systemName: "xmark.circle.fill") }
-                        .buttonStyle(.plain).foregroundStyle(.secondary).help("Remover playlist")
+                if let onRemove { IconButton(icon: "xmark", help: "Remover playlist", action: onRemove) }
+            }
+
+            switch playlist.state {
+            case .loading:
+                HStack(spacing: 10) {
+                    ProgressView().controlSize(.small)
+                    Text("Carregando…").font(.system(size: 12)).foregroundStyle(.secondary)
+                }
+            case .failed(let msg):
+                Label(msg, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange).font(.system(size: 12))
+            case .ready:
+                if !collapsible || playlist.expanded {
+                    LazyVStack(spacing: 2) {
+                        ForEach($playlist.entries) { $e in VideoEntryRow(entry: $e, showIndex: true) }
+                    }
                 }
             }
         }

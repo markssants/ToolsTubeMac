@@ -12,6 +12,7 @@ enum Snapshot {
         let dir = URL(fileURLWithPath: i + 1 < args.count ? args[i + 1] : NSTemporaryDirectory())
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let dark = args.contains("--dark")
+        func makeState() -> AppState {
         let state = AppState()
         // dados de exemplo
         state.single.url = "https://www.youtube.com/watch?v=jNQXAC9IVRw"
@@ -22,10 +23,13 @@ enum Snapshot {
         let q = Job(title: "Me at the zoo", work: .download(DownloadSpec(url: "x", options: MediaOptions(), range: TimeRange(), outputDir: URL(fileURLWithPath: "/tmp"))))
         q.status = .running; q.progress = 0.42; q.detail = "2.1MiB/s · restam 00:12"
         state.downloadQueue.add([q, Job(title: "Outro vídeo", work: .download(DownloadSpec(url: "y", options: MediaOptions(kind: .audio), range: TimeRange(), outputDir: URL(fileURLWithPath: "/tmp"))))])
+        return state
+        }
 
         let pages: [Page] = [.dlSingle, .dlMulti, .dlPlaylist, .dlQueue, .cvSingle, .cvMulti, .ctSingle, .ctMulti]
         Task {
             for p in pages {
+                let state = makeState()
                 state.tab = state.tabOf(p)
                 state.page = p
                 let host = NSHostingView(rootView: RootView().environmentObject(state))
@@ -44,7 +48,7 @@ enum Snapshot {
                     try? rep.representation(using: .png, properties: [:])?.write(to: f)
                     print("snapshot \(f.path)")
                 }
-                win.orderOut(nil)
+                win.orderOut(nil); win.contentView = nil
             }
             exit(0)
         }

@@ -5,63 +5,58 @@ struct ConvertMultiView: View {
     @ObservedObject var model: ConvertMultiModel
 
     var body: some View {
-        PageScaffold(page: .cvMulti, subtitle: "Converta vários arquivos, cada um com suas opções") {
-            Section("Arquivos") {
-                FileDropZone(multiple: true) { model.add($0) }
+        PageView(page: .cvMulti, subtitle: "Converta vários arquivos, cada um com suas próprias opções") {
+            GlassCard("Arquivos", icon: "doc.on.doc.fill") {
+                FileDropZone(multiple: true, compact: !model.files.isEmpty) { urls in withAnimation { model.add(urls) } }
             }
 
             if !model.files.isEmpty {
-                Section {
+                GlassCard("Opções para todos", icon: "square.stack.3d.up.fill", accessory: {
+                    Button { withAnimation { model.applyToAll() } } label: { Label("Aplicar a todos", systemImage: "checkmark.circle") }
+                        .buttonStyle(LiquidButtonStyle(kind: .primary, compact: true))
+                }) {
                     MediaOptionsFields(options: $model.globalOptions, context: .convert)
-                    HStack {
-                        Spacer()
-                        Button { model.applyToAll() } label: { Label("Aplicar a todos", systemImage: "square.stack.3d.up") }
-                    }
-                } header: {
-                    Text("Opções para todos")
-                } footer: {
-                    Text("Ajuste aqui e aplique a todos, ou personalize cada arquivo abaixo.")
-                        .font(.caption).foregroundStyle(.secondary)
                 }
             }
 
             ForEach($model.files) { $file in
-                Section {
-                    FileHeaderRow(file: file)
-                    DisclosureGroup(isExpanded: $file.expanded) {
-                        MediaOptionsFields(options: $file.options, context: .convert)
-                        Toggle("Cortar antes de converter", isOn: $file.range.enabled.animation())
-                        if file.range.enabled {
-                            TimeRangeFields(range: $file.range, duration: file.probe?.duration)
+                GlassCard {
+                    FileHeaderRow(file: file) {
+                        Button {
+                            withAnimation(.spring(response: 0.35)) { file.expanded.toggle() }
+                        } label: {
+                            Label(file.expanded ? "Fechar" : "Personalizar", systemImage: file.expanded ? "chevron.up" : "slider.horizontal.3")
                         }
-                    } label: {
-                        HStack {
-                            Text("Opções").foregroundStyle(.secondary)
-                            Spacer()
-                            Text(([file.options.summary(original: true)] + (file.range.isActive ? [file.range.summary] : []))
-                                .joined(separator: " · "))
-                                .font(.callout).foregroundStyle(.secondary)
+                        .buttonStyle(LiquidButtonStyle(kind: .secondary, compact: true))
+                        IconButton(icon: "xmark", help: "Remover") {
+                            withAnimation { model.files.removeAll { $0.id == file.id } }
                         }
                     }
-                } header: {
-                    HStack {
-                        Spacer()
-                        Button {
-                            withAnimation { model.files.removeAll { $0.id == file.id } }
-                        } label: { Label("Remover", systemImage: "xmark") }
-                            .buttonStyle(.link).font(.caption)
+                    HStack(spacing: 6) {
+                        MetaChip(icon: file.options.kind.icon, text: file.options.summary(original: true))
+                        if file.range.isActive { MetaChip(icon: "timer", text: file.range.summary) }
+                    }
+                    if file.expanded {
+                        VStack(alignment: .leading, spacing: 12) {
+                            RowDivider()
+                            MediaOptionsFields(options: $file.options, context: .convert)
+                            RowDivider()
+                            OptionRow(title: "Cortar antes de converter") {
+                                Toggle("", isOn: $file.range.enabled.animation()).toggleStyle(.switch).labelsHidden()
+                            }
+                            if file.range.enabled {
+                                TimeRangeFields(range: $file.range, duration: file.probe?.duration)
+                            }
+                        }
+                        .transition(.opacity.combined(with: .move(edge: .top)))
                     }
                 }
             }
 
-            SaveLocationSection(location: $model.save, allowSource: true)
-            ActivitySection(queue: model.runner, title: "Conversões")
+            SaveLocationCard(location: $model.save, allowSource: true)
+            ActivityCard(queue: model.runner, title: "Conversões")
         } actions: {
             OpenFolderButton { model.save.resolve(source: model.files.first?.url) }
-            if !model.files.isEmpty {
-                Button("Limpar lista") { withAnimation { model.files.removeAll() } }
-            }
-            Spacer()
             AddToQueueButton(count: model.files.count) {
                 guard let jobs = model.makeJobs() else { return }
                 app.convertQueue.add(jobs)
@@ -70,7 +65,7 @@ struct ConvertMultiView: View {
             .disabled(model.files.isEmpty)
             PrimaryButton(title: model.files.count > 1 ? "Converter \(model.files.count)" : "Converter", icon: "arrow.triangle.2.circlepath") {
                 guard let jobs = model.makeJobs() else { return }
-                model.runner.run(jobs)
+                withAnimation { model.runner.run(jobs) }
             }
             .disabled(model.files.isEmpty)
         }
